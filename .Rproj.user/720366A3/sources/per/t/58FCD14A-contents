@@ -1,0 +1,305 @@
+---
+title             : "Final Paper"
+shorttitle        : "Covid 19"
+author: 
+  - name          : "Gerardo Palacios"
+    affiliation   : "1,2"
+affiliation:
+  - id            : "1"
+    institution   : "DSC 430 - Data Visualization"
+  - id            : "2"
+    institution   : "DePaul University"
+wordcount         : "X"
+bibliography      : ["r-references.bib"]
+floatsintext      : yes
+figsintext        : yes
+figurelist        : yes
+tablelist         : yes
+footnotelist      : no
+linenumbers       : no
+mask              : no
+draft             : no
+documentclass     : "apa6"
+classoption       : "man"
+#output            : papaja::apa6_pdf
+output            : html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup libraries, include = FALSE}
+library("papaja")
+library(dplyr)
+library(mosaic)
+library(lubridate)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(cowplot)
+library(scales)
+library('vioplot')
+library(ggmosaic)
+library(psych)
+library("tidyr")
+library(corrplot)
+library(gganimate)
+library(tidyquant)
+library(countrycode)
+library(sp)
+library(rworldmap)
+library(knitr)
+library(kableExtra)
+library(xtable)
+
+source("C:\\Users\\G_MAN\\OneDrive\\DePaul\\Advanced Data Anlaysis\\Functions\\SummaryFunctions.R")
+
+```
+
+
+```{r setup colors, include = FALSE}
+pallets <- list(
+  'diverging'=c(
+    'Spectral',
+    'RdYlGn',
+    'RdYlBu',
+    'RdGy',
+    'RdBu',
+    'PuOr',
+    'PRGn',
+    'PiYG',
+    'BrBG'),
+  
+  'qualitative'= c(
+    'Set1',
+    'Set2',
+    'Set3',
+    'Pastel2',
+    'Pastel1',
+    'Paired',
+    'Dark2',
+    'Accent'),
+    
+  'sequential'=c(
+    'YlOrRd',
+    'YlOrBr',
+    'YlGnBu',
+    'YlGn',
+    'Reds',
+    'RdPu',
+    'Purples',
+    'PuRd',
+    'PuBuGn',
+    'PuBu',
+    'OrRd',
+    'Oranges',
+    'Greys',
+    'Greens',
+    'GnBu',
+    'BuPu',
+    'BuGn',
+    'Blues')
+)
+
+```
+
+```{r setup names, include = FALSE}
+# Define plot titles
+titles <- list("title1" = "Continent vs Stringency Responses", 
+                "title2" = "Distribution of New Cases by Continent and Stringency Level", 
+                "title3" = "Weekly Deaths Per Weekly Total Cases by Time and Continent",
+                "title4" = "Weekly Deaths Per Weekly Total Cases by Time and Stringency Index",
+                "title5" = "Total Deaths")
+
+
+subtitles <- list("subtitle1" = "Between March 2020 and October 2020", 
+                "subtitle2" = "Between March 2020 and October 2020", 
+                "subtitle2a" = "Week of : {frame_time}", 
+                "subtitle3" = "Smoothed LOESS - Between March 2020 and October 2020", 
+                "subtitle4" = "Smoothed LOESS - Between March 2020 and October 2020",
+                "subtitle4" = "Between March 2020 and October 2020",
+                "subtitle5" = "Between March 2020 and October 2020",
+                "subtitle5a" = "Week of : {current_frame}")
+
+
+```
+
+
+```{r analysis-preferences, include = FALSE}
+# Seed for random number generation
+set.seed(123)
+options(scipen = 999)  
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+r_refs("r-references.bib")
+
+```
+
+# Covid-19
+```{r pre-processing, include = TRUE,echo=TRUE,warning=FALSE}
+# Import data
+data <- read.table("cleandata_rm.csv", header=TRUE, sep=",")
+
+look_at <- c(
+  "continent",
+  "location", 
+  "date",
+  "total_cases", 
+  "new_cases",
+  "total_deaths",
+  "new_deaths",
+  "stry_index",  
+  "population",  
+  "pop.index",
+  "median_age",  
+  "aged_65_older",
+  "aged_70_older", 
+  "gdp_per_capita",
+  "extreme_poverty",
+  "cardio.death.rate",
+  "diabet.prev",
+  "female_smokers",
+  "male_smokers",
+  "handwash.fac",
+  "hosp.beds.p.thsd",
+  "life_expectancy", 
+  "human.dev.index"
+)
+
+rename <- c(
+  "Continent",
+  "Date",
+  "Location", 
+  "Total Cases", 
+  "New Cases",
+  "Total Deaths",
+  "New Deaths",
+  "Stringency Response",
+  "Stringency Index",  
+  "Population",  
+  "Population Index",
+  "Median Age",  
+  "Age 65 and Over",
+  "Age 75 and Over", 
+  "GDP per Capita",
+  "Extreme Poverty",
+  "Cardio Death Rate",
+  "Diabetes Prevelence",
+  "Female Smokers",
+  "Male Smokers",
+  "Handwashing Facilities",
+  "Hospital Beds per Thousand",
+  "Life Expectency", 
+  "Human Development Index",
+  "Deaths per Total Cases"
+)
+
+
+
+data <- data[look_at]
+colnames(data) <- rename[-c(8,25)]
+numeric_columns <- as.vector(colnames(select_if(data,is.numeric)))
+colnames(data) <- look_at
+
+# Convert to date types
+data$date <- as.Date(as_date(data$date,format = '%Y-%m-%d'))
+
+# Change date format
+data$date <- as.Date(as.yearmon(data$date,
+                      format = "%Y-%m-%d"),
+                      format = "%m-%d-%Y")
+
+# Remove special characters
+data$continent <- gsub("\n"," " , data$continent ,ignore.case = TRUE)
+
+
+# Bin the stringency index into 4 parts
+data$stry_index_cat <- as.factor(ifelse(
+  data$stry_index <= 25, 'No Response' , ifelse( 
+   data$stry_index > 25 & data$stry_index <= 50 , 'Least Stringent', ifelse(
+    data$stry_index > 50 & data$stry_index <= 75 ,'Moderately Stringent',ifelse( 
+     data$stry_index > 75 ,  'Most Stringent','None')))))
+
+# Convert categorical into integer representations
+data$stry_index_cat_int <- as.integer(factor(data$stry_index_cat, 
+                          levels = c("No Response", "Least Stringent", "Moderately Stringent", "Most Stringent"),
+                          ordered = TRUE))
+
+
+# Copy standardized raw data set
+data_raw <- data
+
+# Pivot and summarize data by 7 days
+data <- data %>% group_by(
+  continent= continent,
+  date=floor_date(date, "7 days"),
+  
+  ) %>%
+   summarize(
+  location = getmode(location),
+  total_cases = mean(total_cases), 
+  new_cases = mean(new_cases),
+  total_deaths = mean(total_deaths),
+  new_deaths = mean(new_deaths),
+  stry_index_cat_int = getmode(stry_index_cat_int),
+  stry_index = mean(stry_index),
+  population = mean(population),
+  pop.index = mean(pop.index),
+  median_age = mean(median_age),
+  aged_65_older = mean(aged_65_older),
+  aged_70_older = mean(aged_70_older),
+  gdp_per_capita = mean(gdp_per_capita),
+  extreme_poverty = mean(extreme_poverty),
+  cardio.death.rate = mean(cardio.death.rate),
+  diabet.prev = mean(diabet.prev),
+  female_smokers = mean(female_smokers),
+  male_smokers = mean(male_smokers),
+  handwash.fac = mean(handwash.fac),
+  hosp.beds.p.thsd = mean(hosp.beds.p.thsd),
+  life_expectancy = mean(life_expectancy),
+  human.dev.index = mean(human.dev.index)
+)
+
+
+# Create new variable 
+data$deaths_per_cases <- (data$total_deaths/data$total_cases) * 100
+data_raw$deaths_per_cases <- (data_raw$total_deaths/data_raw$total_cases) * 100
+
+# Manually Transform all numeric variables to log base 10
+log_base = 10
+data <- data %>% mutate_if(is.numeric,funs(log(.,log_base)))
+
+
+colnames(data) <- rename
+
+
+```
+
+\clearpage
+```{r exploratory analysis,include=FALSE}
+exclude <- c('Total Cases','Total Deaths')
+
+correlations <- SummaryCorrelations(df=data[numeric_columns],strong=.7,corMethods = c("pearson","spearman"), name="cor_1",z=0,folder='plots')
+correlations_scaled <- SummaryCorrelations(df=data[numeric_columns],strong=.7,corMethods = c("pearson","spearman"), name="cor_1_scaled",z=1,folder='plots')
+
+PCA_1 <- PC_Analysis(data[numeric_columns],type='spearman',folder='plots',PCAName = 'PCA_1',exclude = exclude )
+PCA_2 <- PC_Analysis(data[correlations_scaled$spearman$StrongCorr],factors = 4,type='spearman', folder='plots',PCAName = 'PCA_2',exclude = exclude)
+
+```
+
+## PCA Analysis
+
+```{r p1, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 8,fig.cap="Covid 19 - Stringency Level vs Continent",warning=FALSE}
+
+print(PCA_2$`PCA results`$`Principal Rotated - Not Scaled`$loadings,cutoff=.4,sort=T)
+
+```
+
+```{r p1, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 8,fig.cap="Covid 19 - Stringency Level vs Continent",warning=FALSE}
+
+print(PCA_2$`PCA results`$`Principal Rotated - Not Scaled`$loadings,cutoff=.4,sort=T)
+
+```
+
+```{r table1,include=T, echo=F,fig.pos="H"}
+kable(PCA_2$`Latex Tables`$`PCA Importance Table Rotated - Unscaled (Co-variance)`,format = 'markdown')
+```
+

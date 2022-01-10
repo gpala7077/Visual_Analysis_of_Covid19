@@ -1,0 +1,21 @@
+{
+    "debugBreakpointsState": {
+        "breakpoints": [
+            {
+                "id": 8,
+                "path": "C:/Users/G_MAN/OneDrive/DePaul/Advanced Data Anlaysis/Functions/SummaryFunctions.R",
+                "line_number": 255,
+                "function_steps": "4",
+                "function_name": "SummaryCorrelations",
+                "state": 1,
+                "editor_state": 1,
+                "editor_line_number": 255,
+                "is_pending_debug_completion": false,
+                "needs_updated_steps": true,
+                "type": 0,
+                "is_package_breakpoint": false,
+                "package_name": ""
+            }
+        ]
+    }
+}

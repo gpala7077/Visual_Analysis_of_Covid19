@@ -1,0 +1,400 @@
+---
+title             : "Assignment Four"
+shorttitle        : "Module 7 - Assignment Four"
+author: 
+  - name          : "Gerardo Palacios"
+    affiliation   : "1,2"
+affiliation:
+  - id            : "1"
+    institution   : "DSC 430 - Data Visualization"
+  - id            : "2"
+    institution   : "DePaul University"
+wordcount         : "X"
+bibliography      : ["r-references.bib"]
+floatsintext      : yes
+figsintext        : yes
+figurelist        : yes
+tablelist         : yes
+footnotelist      : no
+linenumbers       : no
+mask              : no
+draft             : no
+documentclass     : "apa6"
+classoption       : "man"
+#output            : papaja::apa6_pdf
+output            : html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup libraries, include = FALSE}
+library("papaja")
+library(dplyr)
+library(mosaic)
+library(lubridate)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(cowplot)
+library(scales)
+library('vioplot')
+library(ggmosaic)
+library(psych)
+library("tidyr")
+library(corrplot)
+library(gganimate)
+library(tidyquant)
+library(countrycode)
+library(sp)
+library(rworldmap)
+source("C:\\Users\\G_MAN\\OneDrive\\DePaul\\Advanced Data Anlaysis\\Functions\\SummaryFunctions.R")
+
+```
+
+
+```{r setup colors, include = FALSE}
+pallets <- list(
+  'diverging'=c(
+    'Spectral',
+    'RdYlGn',
+    'RdYlBu',
+    'RdGy',
+    'RdBu',
+    'PuOr',
+    'PRGn',
+    'PiYG',
+    'BrBG'),
+  
+  'qualitative'= c(
+    'Set1',
+    'Set2',
+    'Set3',
+    'Pastel2',
+    'Pastel1',
+    'Paired',
+    'Dark2',
+    'Accent'),
+    
+  'sequential'=c(
+    'YlOrRd',
+    'YlOrBr',
+    'YlGnBu',
+    'YlGn',
+    'Reds',
+    'RdPu',
+    'Purples',
+    'PuRd',
+    'PuBuGn',
+    'PuBu',
+    'OrRd',
+    'Oranges',
+    'Greys',
+    'Greens',
+    'GnBu',
+    'BuPu',
+    'BuGn',
+    'Blues')
+)
+
+```
+
+```{r setup names, include = FALSE}
+# Define plot titles
+titles <- list("title1" = "Continent vs Stringency Responses", 
+                "title2" = "Distribution of New Cases by Date and Stringency Level", 
+                "title3" = "Weekly Deaths Per Weekly Total Cases by Time, Continent and Stringency Index",
+                "title4" = "Weekly Deaths Per Weekly Total Cases by Time, Continent and Stringency Index",
+                "title5" = "Total Deaths")
+
+
+subtitles <- list("subtitle1" = "Between March 2020 and October 2020", 
+                "subtitle2" = "Between March 2020 and October 2020", 
+                "subtitle2a" = "Week of : {frame_time}", 
+                "subtitle3" = "Smoothed LOESS - Between March 2020 and October 2020", 
+                "subtitle4" = "Smoothed LOESS - Between March 2020 and October 2020",
+                "subtitle4" = "Between March 2020 and October 2020",
+                "subtitle5" = "Between March 2020 and October 2020",
+                "subtitle5a" = "Week of : {current_frame}")
+
+
+```
+
+
+```{r analysis-preferences, include = FALSE}
+# Seed for random number generation
+set.seed(123)
+options(scipen = 999)  
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+r_refs("r-references.bib")
+
+```
+
+# Covid-19
+Pre-processing was necessary in order to tune the plots appropriately. The field names and data types are standardized. In addition, the  stringency variable index was binned to represent 4 different stringency levels as opposed to the index value. Finally, the data was summarized and averaged on a weekly basis in order to portray the data in smoothed equal, time intervals. The following visualizations are centered around the relationships between the number of new cases or new deaths and a continents stringency response over the course of the pandemic. 
+
+```{r intel_1, include = TRUE,echo=TRUE,warning=FALSE}
+# Import data
+data <- read.table("cleandata_rm.csv", header=TRUE, sep=",")
+
+# Convert to date types
+data$date <- as.Date(as_date(data$date,format = '%Y-%m-%d'))
+
+# Remove special characters
+data$continent <- gsub("\n"," " , data$continent ,ignore.case = TRUE)
+
+data <- data %>% mutate_if(is.character,as.factor)
+
+# Bin the stringency index into 4 parts
+data$stry_index <- as.factor(ifelse(
+  data$stry_index <= 25, 'No Response' , ifelse( 
+   data$stry_index > 25 & data$stry_index <= 50 , 'Least Stringent', ifelse(
+    data$stry_index > 50 & data$stry_index <= 75 ,'Moderately Stringent',ifelse( 
+     data$stry_index > 75 ,  'Most Stringent','None')))))
+
+# Define mode function
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+# Copy standardized raw data set
+data_raw <- data
+
+# Pivot and summarize data by 7 days
+data <- data %>% group_by(
+  continent=continent,
+  date=floor_date(date, "7 days"),
+  
+  ) %>%
+   summarize(
+     location = getmode(location),
+     new_cases=mean(new_cases),
+     new_deaths=mean(new_deaths),
+     stry_index=getmode(stry_index),
+     total_deaths=mean(total_deaths),
+     total_cases = mean(total_cases),
+     month = mean(month),
+     population=mean(population))
+
+# Add new date format
+data$date2 <- as.POSIXct(as.yearmon(data$date,
+                      format = "%Y-%m-%d"),
+                      format = "%m-%d-%Y")
+
+data_raw$date2 <- as.POSIXct(as.yearmon(data_raw$date,
+                      format = "%Y-%m-%d"),
+                      format = "%m-%d-%Y")
+
+# Create new variable 
+data$deaths_per_cases <- (data$total_deaths/data$total_cases) * 100
+data_raw$deaths_per_cases <- (data_raw$total_deaths/data_raw$total_cases) * 100
+
+# Manually apply log base 10 scale
+data$new_cases <- log(data$new_cases+1,10)
+data$new_deaths <- log(data$new_deaths+1,10)
+
+data_raw$new_cases <- log(data_raw$new_cases+1,10)
+data_raw$new_deaths <- log(data_raw$new_deaths+1,10)
+
+data_raw = na.omit(data_raw)
+data = na.omit(data)
+
+```
+
+\clearpage
+
+## Visualization One
+
+In order to achieve the visualization below, the stringency index had to be binned in to 4 levels. Figure 1 is a mosaic plot showing the total proportion of stringency responses by continent. Each continent had varying response levels. Note that Asia and South America had the most stringent response while North America and Europe responded less urgently. 
+
+
+```{r p1, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 8,fig.cap="Covid 19 - Stringency Level vs Continent",warning=FALSE}
+
+fill_1 <-   scale_fill_brewer(
+              name="Stringency\nResponse\nLevel", 
+              direction = 1,
+              palette = pallets$qualitative[7])
+
+p1 <- ggplot(data = data_raw) + 
+      geom_mosaic(aes(x=product(stry_index,continent),fill=stry_index,size=3)) +
+
+      annotate(
+      geom="text", x=.225,y=-0.05,
+      label="Africa", color="black", size=5) + 
+
+      annotate(
+      geom="text", x=.59,y=-0.05,
+      label="Asia", color="black", size=5) +
+
+      annotate(
+      geom="text", x=.75,y=-0.05,
+      label="Europe", color="black", size=5) + 
+
+      annotate(
+      geom="text", x=.85,y=-0.05,
+      label="North\nAmerica", color="black", size=5) + 
+
+      annotate(
+      geom="text", x=.97,y=-0.05,
+      label="South\nAmerica", color="black", size=5) + 
+  
+  labs(fill='Stringency Index',title = titles$title1, subtitle = subtitles$subtitle1) + theme(legend.position = 'bottom',axis.title = element_text(size = 7)) + fill_1
+      
+
+p1
+
+```
+
+\clearpage
+
+## Visualization Two
+
+Figure 2 are the summarized weekly distributions for number of new cases by Continent and Stringency level. Continuing with the logic from the previous plot, the stringency index is able to show drastic differences in the number of cases.  It can be easily seen in Figure 2, that continents that applied that most stringent responses to the pandemic had exponentially lower number of new weekly cases and much wider standard deviations. Conversely, continents with less stringent protocols had higher numbers of cases and a much more narrow standard deviation.
+
+```{r p2, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 7,fig.cap="Distributions by Stringency Level and Continent",warning=FALSE}
+
+sec_breaks <- c(10,100, 1000, 10000, 100000, 1000000)
+
+p2 <- ggplot(data=data_raw, aes(y = date2, x = new_cases,fill=stry_index)) + 
+      geom_density_ridges() + 
+      scale_x_continuous(
+        sec.axis = sec_axis(trans = ~10^.,
+        breaks = sec_breaks,
+        labels = format(sec_breaks, big.mark=",", scientific=FALSE),
+        name = 'New Cases Per Week - Exponential scale')) + 
+      labs(title = titles$title2, subtitle = subtitles$subtitle2,fill='Stringency Index') + ylab('Date') + 
+      xlab('New Cases Per Week - Logorithmic scale (Log base 10)') + theme(legend.position = 'bottom') + fill_1
+
+
+p2_animated <- p2 + transition_time(date2) + labs(subtitle = subtitles$subtitle2a)
+animate(p2_animated,fps = 20)
+anim_save(paste(titles$title2,'gif',sep = '.'))
+
+```
+
+\clearpage
+
+## Visualization Three and Four
+Figure 3 has a different point of view. Instead of looking at the weekly cases, it looks at the weekly death rate by total number of weekly cases.  Top portion represent the ratio by continent and by stringency index. Figure 3 reflects the steady but controlled increase in the pandemic with Asia and South American continents whereas Africa, Europe and and North America experienced a sudden wave of deaths between April and June. The bottom portion reinforces the importance of continent response level and its impact on the weekly death rates.  Those continents that responded poorly saw an enormous exponential impact of death cases in the same time frame. Figure 4 is shown to have wild upward curves for Least stringent and some periods of no responses while those that imposed moderate and strict protocols saw a steady decline. 
+
+```{r p3, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 10,fig.cap="Smoothed LOESS by Continent and Stringency Level ",warning=FALSE}
+
+color_2 <-   scale_color_brewer(
+              name="Continents", 
+              direction = 1,
+              palette = pallets$qualitative[2])
+
+
+lwd = 2.25
+span = 1
+p3 <- ggplot() + 
+  geom_smooth(data=data[which(data$continent=='Africa'),],span = span,aes(x=date,y=deaths_per_cases,linetype =stry_index,color=continent),lwd =lwd) +
+  geom_smooth(data=data[which(data$continent=='Asia'),],span = span,aes(x=date,y=deaths_per_cases,linetype =stry_index,color=continent),lwd =lwd)  +
+  geom_smooth(data=data[which(data$continent=='Europe'),],span = span,aes(x=date,y=deaths_per_cases,linetype =stry_index,color=continent),lwd =lwd)+
+  geom_smooth(data=data[which(data$continent=='North America'),],span = span,aes(x=date,y=deaths_per_cases,linetype =stry_index,color=continent),lwd =lwd) + 
+  geom_smooth(data=data[which(data$continent=='South America'),],span = span,aes(x=date,y=deaths_per_cases,linetype =stry_index,color=continent),lwd =lwd) +
+  
+  scale_x_date(date_breaks = '1 month') + 
+  scale_y_continuous(n.breaks = 15) + theme(legend.position = 'bottom') +
+  labs(title = titles$title3,subtitle = subtitles$subtitle3,linetype='Stringency Response') + 
+  ylab('Weekly Deaths Per Weekly Total Cases (%)') + 
+  xlab('Date') + theme(axis.text.x.bottom = element_text(angle = 45,hjust = 1),legend.position = 'left') + color_2
+
+
+p3
+```
+
+\clearpage
+## Visualization Five
+Figure 4 is a choropleth. depicting the total deaths caused by Covid 19 between March 2020 and October 2020. The animation is a better representation of the time lapse while the static version aggregates the entire time frame, Although the static may not the perfectly representative the animation provides fuller context of the extent the virus to hold. 
+```{r p4, include = TRUE, echo = FALSE, fig.align='center',fig.width= 8,fig.height= 8 ,fig.cap="Choropleth. of Total Deaths caused by Covid 19",warning=FALSE}
+world <- map_data('world')
+
+coords2continent = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+  indices = over(pointsSP, countriesSP)
+
+  indices$REGION   # returns the continent (7 continent model)
+}
+
+points = data.frame(lon=world$long, lat=world$lat)
+
+world$continent <- coords2continent(points = points)
+
+clean <- select(world,-c('long','lat','group','order','subregion'))
+
+clean <- na.omit(clean)
+clean <- unique(clean)
+cnames <- c('long','lat','group','order','continent')
+
+plot_data <- left_join(world,clean, by = c('region'))
+plot_data <- select(plot_data,-c('continent.x','region','subregion'))
+colnames(plot_data) <- cnames
+
+plot_data <- left_join(plot_data,data, by = c('continent' = 'continent'))
+
+
+fill_2 <-   scale_fill_distiller(
+              name="Total number of\nDeaths\n(Log Base 10)", 
+              direction = 1,
+              palette = pallets$sequential[5],
+              breaks = pretty_breaks(n = 6))
+
+
+
+p5 <- ggplot(plot_data,aes(x=long, y=lat, group=group,fill=log(total_deaths+1))) +
+              geom_polygon(color='black') + labs(title = titles$title5,subtitle = subtitles$subtitle5) + fill_2
+
+p5_animate <- p5 +  transition_manual(factor(date)) + labs(title = titles$title5,subtitle = subtitles$subtitle5a)
+animate(p5_animate,fps = 25)
+anim_save(paste(titles$title5,'gif',sep = '.'))
+
+p5
+```
+\clearpage
+```{r save plots, include = FALSE, echo = FALSE,warning=FALSE}
+
+
+    
+    vName = paste(titles$title1,'png',sep = '.')
+    png(filename=vName,width = 1000, height = 1000,
+        units = "px", pointsize = 12, bg = "white", res = NA,
+        restoreConsole = TRUE) 
+    p1
+    dev.off()
+
+
+    vName = paste(titles$title2,'png',sep = '.')
+    png(filename=vName,width = 1000, height = 1000,
+        units = "px", pointsize = 12, bg = "white", res = NA,
+        restoreConsole = TRUE) 
+    p2
+    dev.off()
+
+    vName = paste(titles$title3,'png',sep = '.')
+    png(filename=vName,width = 1000, height = 1000,
+        units = "px", pointsize = 12, bg = "white", res = NA,
+        restoreConsole = TRUE) 
+    p3
+    dev.off()
+
+
+    vName = paste(titles$title4,'png',sep = '.')
+    png(filename=vName,width = 1000, height = 1000,
+        units = "px", pointsize = 12, bg = "white", res = NA,
+        restoreConsole = TRUE) 
+    p4
+    dev.off()
+
+    vName = paste(titles$title5,'png',sep = '.')
+    png(filename=vName,width = 1000, height = 1000,
+        units = "px", pointsize = 12, bg = "white", res = NA,
+        restoreConsole = TRUE) 
+    p5
+    dev.off()
+
+```
+
+
